@@ -1,0 +1,24 @@
+# Removed generate_image service
+
+generate_content:
+  name: Generate content (DeepSeek) # Added (DeepSeek) for clarity
+  description: Sends a conversational query to DeepSeek. # Updated description
+  fields:
+    config_entry:
+      required: true
+      selector:
+        config_entry:
+          integration: deepseek_conversation # Updated integration domain
+    prompt:
+      required: true
+      selector:
+        text:
+          multiline: true
+      example: "Hello, how can I help you?"
+    # Keep filenames, but note its functionality depends on API support
+    filenames:
+      selector:
+        text:
+          multiline: true
+      example: |
+        - /config/www/image.jpg
