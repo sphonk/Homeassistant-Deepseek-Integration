@@ -39,7 +39,7 @@ type DeepSeekConfigEntry = ConfigEntry
 from .const import (
     CONF_CHAT_MODEL,
     CONF_MAX_TOKENS,
-    CONF_PROMPT,
+    CONF_PROMPT, # Keep CONF_PROMPT for options access if needed elsewhere
     CONF_TEMPERATURE,
     CONF_TOP_P,
     # Removed CONF_REASONING_EFFORT, CONF_WEB_SEARCH*
@@ -96,12 +96,14 @@ def _format_tool(
 # --- Message Conversion (Adapted for chat.completions) ---
 def _convert_content_to_messages(
     content_list: list[conversation.Content],
-    system_prompt: str | None,
+    system_prompt: str | None, # Keep system_prompt argument
 ) -> list[dict[str, Any]]:
     """Convert conversation history to DeepSeek API message format."""
     messages = []
+    # --- Use the passed system_prompt (should be rendered) ---
     if system_prompt:
         messages.append({"role": "system", "content": system_prompt})
+    # --- End Use ---
 
     for content in content_list:
         role: Optional[Literal["user", "assistant", "tool"]] = None # Made Optional explicit
@@ -375,15 +377,16 @@ class DeepSeekConversationEntity(
         client: openai.AsyncClient = self.entry.runtime_data
         model = options.get(CONF_CHAT_MODEL, RECOMMENDED_CHAT_MODEL)
 
-        # Get system prompt from options
-        system_prompt = options.get(CONF_PROMPT)
+        # --- Use the RENDERED prompt from chat_log ---
+        system_prompt = chat_log.llm_prompt
+        # --- End Use ---
 
         # --- Prepare tools if HASS API is used ---
         tools: list[Dict[str, Any]] | None = None # Use generic Dict hint
         tool_choice: Optional[Union[str, Dict[str, Any]]] = None # Use generic Dict/str hint
 
-        # --- Get selected HASS API from options ---
-        # --- MODIFIED LOGIC: Use chat_log.llm_api directly ---
+        # --- Check chat_log.llm_api directly ---
+        hass_api_key = options.get(CONF_LLM_HASS_API) # Get configured API key
         if chat_log.llm_api:
             # The llm_api object provided in chat_log already has the correct context
             active_llm_api = chat_log.llm_api
@@ -393,16 +396,17 @@ class DeepSeekConversationEntity(
             ]
             tool_choice = "auto" # Let the LLM decide when to use tools
             # --- DEBUG: Log tools being sent ---
-            LOGGER.debug("Sending tools to DeepSeek: %s", json.dumps(tools, indent=2))
+            LOGGER.debug("Sending tools to DeepSeek (from chat_log.llm_api): %s", json.dumps(tools, indent=2))
             # --- END DEBUG ---
-        # --- End MODIFIED LOGIC ---
+        # --- Add diagnostic logging if API was selected but chat_log.llm_api is None ---
+        elif hass_api_key:
+             LOGGER.warning("HASS API '%s' selected in options, but chat_log.llm_api is None. Tools cannot be sent.", hass_api_key)
+        # --- End diagnostic logging ---
 
 
-        # Removed web search tool logic
-
-        # Convert chat history to API format
+        # Convert chat history to API format, passing the (now hopefully rendered) system_prompt
         messages = _convert_content_to_messages(chat_log.content, system_prompt)
-        # --- DEBUG: Log messages being sent ---
+        # --- DEBUG: Log messages being sent (will now include rendered prompt if successful) ---
         LOGGER.debug("Sending messages to DeepSeek: %s", json.dumps(messages, indent=2))
         # --- END DEBUG ---
 
@@ -417,10 +421,12 @@ class DeepSeekConversationEntity(
                 # "user": chat_log.conversation_id, # Optional
                 "stream": True,
             }
+            # --- Only add tools/tool_choice if tools list was successfully populated ---
             if tools:
                 model_args["tools"] = tools
-            if tool_choice:
+            if tool_choice: # tool_choice is only set if tools are populated
                  model_args["tool_choice"] = tool_choice
+            # --- End check ---
 
             # Removed OpenAI specific 'reasoning' and 'store' args
 
