@@ -2,18 +2,18 @@
     "config": {
         "step": {
             "user": {
-                "title": "DeepSeek API Key (Test)",
+                "title": "DeepSeek API Key",
                 "data": {
                     "api_key": "API Key"
                 }
             }
         },
         "error": {
-            "cannot_connect": "Cannot connect (Test)",
-            "invalid_auth": "Invalid auth (Test)"
+            "cannot_connect": "Cannot connect",
+            "invalid_auth": "Invalid auth"
         },
         "abort": {
-            "already_configured": "Already configured (Test)"
+            "already_configured": "Already configured"
         }
     }
 }
