@@ -1,0 +1,8 @@
+{
+  "services": {
+    "generate_content": {
+      "service": "mdi:receipt-text-outline"
+    }
+  }
+}
+
