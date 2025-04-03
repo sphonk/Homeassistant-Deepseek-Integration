@@ -1,6 +1,7 @@
 # Home Assistant DeepSeek Conversation Integration (Prototype)
 
 > **Important Note:** This is an **experimental prototype integration**! It has been adapted to use the DeepSeek API instead of the OpenAI API. It may be unstable, contain bugs, and might not be suitable for production use. It serves as a foundation and demonstration for the potential integration of DeepSeek into Home Assistant.
+> This code was used as base https://www.home-assistant.io/integrations/openai_conversation
 
 ## Description
 
