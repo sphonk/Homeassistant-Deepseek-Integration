@@ -28,7 +28,6 @@
           "max_tokens": "Maximum tokens to return in response",
           "temperature": "Temperature",
           "top_p": "Top P"
-          // Removed llm_hass_api, recommended, reasoning_effort, web_search*
         },
         "data_description": {
           "prompt": "System prompt: Instruct how the DeepSeek model should behave.",
@@ -36,34 +35,28 @@
           "max_tokens": "Controls the maximum number of tokens the model will generate in the response.",
           "temperature": "Controls randomness. Lower values make the response more deterministic.",
           "top_p": "Controls diversity via nucleus sampling. Lower values limit the token selection pool."
-          // Removed descriptions for removed options
         }
       }
     },
-    "error": {
-      // Removed model_not_supported, web_search_not_supported
-    }
+    "error": {}
   },
-  "selector": {
-    // Removed reasoning_effort, search_context_size selectors
-  },
+  "selector": {},
   "services": {
-    // Removed generate_image service
     "generate_content": {
       "name": "Generate content",
-      "description": "Sends a conversational query to DeepSeek.", // Updated description
+      "description": "Sends a conversational query to DeepSeek.",
       "fields": {
         "config_entry": {
           "name": "Config entry",
-          "description": "The DeepSeek config entry to use for this action." // Updated description
+          "description": "The DeepSeek config entry to use for this action."
         },
         "prompt": {
           "name": "Prompt",
-          "description": "The prompt to send to DeepSeek." // Updated description
+          "description": "The prompt to send to DeepSeek."
         },
         "filenames": {
           "name": "Files",
-          "description": "List of local file paths (images supported by some models). Functionality depends on DeepSeek model capabilities." // Updated description
+          "description": "List of local file paths (images supported by some models). Functionality depends on DeepSeek model capabilities."
         }
       }
     }
