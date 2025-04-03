@@ -1,0 +1,9 @@
+{
+  "domain": "deepseek_conversation",
+  "name": "DeepSeek Conversation",
+  "codeowners": ["@leofleischmann"],
+  "dependencies": ["http"],
+  "documentation": "none",
+  "iot_class": "cloud_push",
+  "requirements": ["aiohttp"]
+}
