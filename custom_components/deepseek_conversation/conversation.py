@@ -11,12 +11,10 @@ from openai import AsyncStream
 from openai.types.chat import ChatCompletionChunk
 from openai.types.chat.chat_completion import ChatCompletionMessage, ChatCompletion
 from openai.types.chat.chat_completion_message_tool_call import ChatCompletionMessageToolCall
-# --- Removed problematic import ---
-# from openai.types.chat.completion_create_params import ToolChoiceParam # For tool choice if needed
-# --- End removal ---
 
-# Keep voluptuous_openapi if tool schemas are complex, otherwise remove
-# from voluptuous_openapi import convert
+# --- Import voluptuous_openapi ---
+from voluptuous_openapi import convert
+# --- End Import ---
 import voluptuous as vol # Keep for basic schema validation if needed
 
 from homeassistant.components import assist_pipeline, conversation
@@ -71,15 +69,24 @@ async def async_setup_entry(
 # --- Tool Formatting (Keep if using tools with DeepSeek) ---
 def _format_tool(
     tool: llm.Tool, custom_serializer: Callable[[Any], Any] | None
-) -> Dict[str, Any]: # Changed return type hint to generic Dict
+) -> Dict[str, Any]:
     """Format tool specification for OpenAI-compatible tool format."""
-    parameters = tool.parameters.schema if isinstance(tool.parameters, vol.Schema) else tool.parameters
+    # --- Use voluptuous_openapi.convert for parameters ---
+    try:
+        # Pass the voluptuous schema directly to convert
+        parameters = convert(tool.parameters, custom_serializer=custom_serializer)
+    except Exception as e:
+        LOGGER.error("Error converting tool parameters for %s: %s", tool.name, e)
+        # Fallback or decide how to handle conversion errors
+        parameters = {"type": "object", "properties": {}} # Empty schema on error
+    # --- End Use ---
+
     return {
         "type": "function",
         "function": {
             "name": tool.name,
             "description": tool.description,
-            "parameters": parameters,
+            "parameters": parameters, # Use the converted JSON schema
         }
     }
 # --- End Tool Formatting ---
@@ -93,9 +100,6 @@ def _convert_content_to_messages(
     """Convert conversation history (excluding system prompt) to DeepSeek API message format."""
     messages = []
     # --- REMOVED: Explicit system prompt addition ---
-    # if system_prompt:
-    #    messages.append({"role": "system", "content": system_prompt})
-    # --- End REMOVED ---
 
     for content in content_list:
         role: Optional[Literal["user", "assistant", "tool"]] = None
@@ -105,8 +109,6 @@ def _convert_content_to_messages(
 
         # --- ADDED: Skip system messages potentially added by async_update_llm_data ---
         if isinstance(content, conversation.SystemContent):
-             # Although async_update_llm_data might not add it here, better safe than sorry
-             # The system prompt is handled separately by the pipeline/API call structure
              continue
         # --- End ADDED ---
 
@@ -336,16 +338,22 @@ class DeepSeekConversationEntity(
 
         if chat_log.llm_api: # Check the object populated by async_update_llm_data
             active_llm_api = chat_log.llm_api
-            tools = [
-                _format_tool(tool, active_llm_api.custom_serializer)
-                for tool in active_llm_api.tools
-            ]
-            tool_choice = "auto"
-            # --- MODIFIED DEBUG LOGGING ---
-            # Log only tool names to avoid serialization errors
-            tool_names = [t.get("function", {}).get("name", "unknown") for t in tools]
-            LOGGER.debug("Sending tools to DeepSeek (from chat_log.llm_api): %s", tool_names)
-            # --- END MODIFIED DEBUG LOGGING ---
+            try:
+                 # --- Use _format_tool which now includes conversion ---
+                 tools = [
+                     _format_tool(tool, active_llm_api.custom_serializer)
+                     for tool in active_llm_api.tools
+                 ]
+                 # --- End Use ---
+                 tool_choice = "auto"
+                 # Log only tool names to avoid serialization errors
+                 tool_names = [t.get("function", {}).get("name", "unknown") for t in tools]
+                 LOGGER.debug("Sending tools to DeepSeek (from chat_log.llm_api): %s", tool_names)
+            except Exception as e:
+                 # Log error during tool formatting/conversion
+                 LOGGER.error("Error formatting tools: %s", e, exc_info=True)
+                 tools = None # Ensure tools are None if formatting failed
+                 tool_choice = None
         elif hass_api_key:
              LOGGER.warning("HASS API '%s' selected in options, but chat_log.llm_api is None after async_update_llm_data. Tools cannot be sent.", hass_api_key)
         # --- End Tool Prep ---
@@ -371,7 +379,7 @@ class DeepSeekConversationEntity(
             if tool_choice:
                  model_args["tool_choice"] = tool_choice
 
-            LOGGER.debug("Model arguments for DeepSeek: %s", model_args)
+            LOGGER.debug("Model arguments for DeepSeek: %s", model_args) # This might fail again if tools aren't fully serializable by default logger
 
             try:
                 result = await client.chat.completions.create(**model_args)
@@ -385,6 +393,13 @@ class DeepSeekConversationEntity(
                  intent_response = intent.IntentResponse(language=user_input.language)
                  intent_response.async_set_error(intent.IntentResponseErrorCode.UNKNOWN, "Connection error with DeepSeek API")
                  return conversation.ConversationResult(response=intent_response, conversation_id=chat_log.conversation_id)
+            # --- Catch potential TypeError during request encoding ---
+            except TypeError as err:
+                 LOGGER.error("TypeError during DeepSeek API call (likely tool serialization): %s", err, exc_info=True)
+                 intent_response = intent.IntentResponse(language=user_input.language)
+                 intent_response.async_set_error(intent.IntentResponseErrorCode.UNKNOWN, f"Failed to send request: {err}")
+                 return conversation.ConversationResult(response=intent_response, conversation_id=chat_log.conversation_id)
+            # --- End Catch ---
             except openai.OpenAIError as err:
                 LOGGER.error("Error talking to DeepSeek: %s", err)
                 intent_response = intent.IntentResponse(language=user_input.language)
