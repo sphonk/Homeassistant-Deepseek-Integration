@@ -2,25 +2,24 @@
 
 from __future__ import annotations
 
-# Removed json import as it's no longer used here
 import logging
 from types import MappingProxyType
 from typing import Any
 
 import openai
 import voluptuous as vol
-# Removed voluptuous_openapi import as it's no longer used here
 
-# Removed zone import
 from homeassistant.config_entries import (
     ConfigEntry,
     ConfigFlow,
     ConfigFlowResult,
     OptionsFlow,
 )
-from homeassistant.const import CONF_API_KEY # Removed unused ATTR_* and CONF_LLM_HASS_API
+# --- Import CONF_LLM_HASS_API ---
+from homeassistant.const import CONF_API_KEY, CONF_LLM_HASS_API
+# --- End Import ---
 from homeassistant.core import HomeAssistant
-from homeassistant.helpers import llm # Keep llm for API selection if needed, or remove
+from homeassistant.helpers import llm
 from homeassistant.helpers.httpx_client import get_async_client
 from homeassistant.helpers.selector import (
     NumberSelector,
@@ -28,7 +27,6 @@ from homeassistant.helpers.selector import (
     SelectOptionDict,
     SelectSelector,
     SelectSelectorConfig,
-    # SelectSelectorMode, # Removed unused mode
     TemplateSelector,
 )
 from homeassistant.helpers.typing import VolDictType
@@ -38,17 +36,14 @@ from .const import (
     CONF_CHAT_MODEL,
     CONF_MAX_TOKENS,
     CONF_PROMPT,
-    # Removed CONF_REASONING_EFFORT, CONF_RECOMMENDED, CONF_WEB_SEARCH*
     CONF_TEMPERATURE,
     CONF_TOP_P,
-    DOMAIN, # Use updated domain
+    DOMAIN,
     RECOMMENDED_CHAT_MODEL,
     RECOMMENDED_MAX_TOKENS,
     RECOMMENDED_TEMPERATURE,
     RECOMMENDED_TOP_P,
-    DEEPSEEK_API_BASE_URL, # Use base URL constant
-    # Removed RECOMMENDED_REASONING_EFFORT, RECOMMENDED_WEB_SEARCH*
-    # Removed UNSUPPORTED_MODELS
+    DEEPSEEK_API_BASE_URL,
 )
 
 _LOGGER = logging.getLogger(__name__)
@@ -59,10 +54,10 @@ STEP_USER_DATA_SCHEMA = vol.Schema(
     }
 )
 
-# Simplified default options for DeepSeek
+# Add CONF_LLM_HASS_API back to default options if desired, e.g., default to Assist
 DEFAULT_OPTIONS = {
-    # CONF_LLM_HASS_API: llm.LLM_API_ASSIST, # Keep if HASS API control is desired
-    CONF_PROMPT: llm.DEFAULT_INSTRUCTIONS_PROMPT, # Keep default prompt
+    CONF_LLM_HASS_API: llm.LLM_API_ASSIST, # Default to Assist API
+    CONF_PROMPT: llm.DEFAULT_INSTRUCTIONS_PROMPT,
     CONF_CHAT_MODEL: RECOMMENDED_CHAT_MODEL,
     CONF_MAX_TOKENS: RECOMMENDED_MAX_TOKENS,
     CONF_TEMPERATURE: RECOMMENDED_TEMPERATURE,
@@ -74,12 +69,11 @@ async def validate_input(hass: HomeAssistant, data: dict[str, Any]) -> None:
     """Validate the user input allows us to connect."""
     client = openai.AsyncOpenAI(
         api_key=data[CONF_API_KEY],
-        base_url=DEEPSEEK_API_BASE_URL, # Use DeepSeek URL for validation
+        base_url=DEEPSEEK_API_BASE_URL,
         http_client=get_async_client(hass)
     )
-    # Validate using a test chat completion call
     await client.with_options(timeout=10.0).chat.completions.create(
-        model=RECOMMENDED_CHAT_MODEL, # Use default model for test
+        model=RECOMMENDED_CHAT_MODEL,
         messages=[{"role": "user", "content": "Hi"}],
         max_tokens=1,
     )
@@ -88,7 +82,7 @@ async def validate_input(hass: HomeAssistant, data: dict[str, Any]) -> None:
 class DeepSeekConfigFlow(ConfigFlow, domain=DOMAIN):
     """Handle a config flow for DeepSeek Conversation."""
 
-    VERSION = 1
+    VERSION = 1 # Consider incrementing if significant changes are made
 
     async def async_step_user(
         self, user_input: dict[str, Any] | None = None
@@ -109,16 +103,15 @@ class DeepSeekConfigFlow(ConfigFlow, domain=DOMAIN):
             errors["base"] = "invalid_auth"
         except openai.OpenAIError as e:
             _LOGGER.error("DeepSeek API error during validation: %s", e)
-            errors["base"] = "api_error" # Add a generic API error key
+            errors["base"] = "api_error"
         except Exception:
             _LOGGER.exception("Unexpected exception during validation")
             errors["base"] = "unknown"
         else:
-            # Changed title to DeepSeek
             return self.async_create_entry(
                 title="DeepSeek",
                 data=user_input,
-                options=DEFAULT_OPTIONS, # Use simplified default options
+                options=DEFAULT_OPTIONS,
             )
 
         return self.async_show_form(
@@ -136,11 +129,9 @@ class DeepSeekConfigFlow(ConfigFlow, domain=DOMAIN):
 class DeepSeekOptionsFlow(OptionsFlow):
     """DeepSeek config flow options handler."""
 
-    # Removed last_rendered_recommended logic
-
     def __init__(self, config_entry: ConfigEntry) -> None:
         """Initialize options flow."""
-        self.config_entry = config_entry # Store config entry
+        self.config_entry = config_entry
 
     async def async_step_init(
         self, user_input: dict[str, Any] | None = None
@@ -149,20 +140,19 @@ class DeepSeekOptionsFlow(OptionsFlow):
         errors: dict[str, str] = {}
 
         if user_input is not None:
-            # Basic validation (e.g., check if model name is reasonable if needed)
-            # Add more validation if required for DeepSeek models/params
-
-            # Removed logic related to CONF_RECOMMENDED toggle
-            # Removed logic related to CONF_LLM_HASS_API == "none" (handle directly in schema/defaults)
-            # Removed logic checking UNSUPPORTED_MODELS
-            # Removed logic checking web search support and location data
+            # --- Handle CONF_LLM_HASS_API selection ---
+            # If user selects "none", store it as None or remove the key
+            if user_input.get(CONF_LLM_HASS_API) == "none":
+                 # Decide how to store "none": either remove key or store None
+                 # Let's remove the key for simplicity, assuming None means no API
+                 user_input.pop(CONF_LLM_HASS_API, None)
+            # --- End handling ---
 
             if not errors:
-                # Ensure required options have values before creating entry
+                # Merge new user input with existing options before creating entry
                 updated_options = {**self.config_entry.options, **user_input}
                 return self.async_create_entry(title="", data=updated_options)
 
-        # Use the simplified schema function
         schema = deepseek_config_option_schema(self.hass, self.config_entry.options)
         return self.async_show_form(
             step_id="init",
@@ -170,15 +160,13 @@ class DeepSeekOptionsFlow(OptionsFlow):
             errors=errors,
         )
 
-    # Removed get_location_data method
-
 
 def deepseek_config_option_schema(
     hass: HomeAssistant,
     options: dict[str, Any] | MappingProxyType[str, Any],
 ) -> VolDictType:
     """Return a schema for DeepSeek completion options."""
-    # Keep HASS API selection if desired, otherwise remove
+    # --- Re-add HASS API selection ---
     hass_apis: list[SelectOptionDict] = [
         SelectOptionDict(label="No control", value="none")
     ]
@@ -186,8 +174,8 @@ def deepseek_config_option_schema(
         SelectOptionDict(label=api.name, value=api.id)
         for api in llm.async_get_apis(hass)
     )
+    # --- End re-add ---
 
-    # Simplified schema, removed OpenAI specific options
     schema: VolDictType = {
         vol.Optional(
             CONF_PROMPT,
@@ -196,14 +184,16 @@ def deepseek_config_option_schema(
                     CONF_PROMPT, llm.DEFAULT_INSTRUCTIONS_PROMPT
                 )
             },
-            default=llm.DEFAULT_INSTRUCTIONS_PROMPT, # Ensure default
+            default=llm.DEFAULT_INSTRUCTIONS_PROMPT,
         ): TemplateSelector(),
-        # Keep HASS API selector if needed
-        # vol.Optional(
-        #     CONF_LLM_HASS_API,
-        #     description={"suggested_value": options.get(CONF_LLM_HASS_API)},
-        #     default="none",
-        # ): SelectSelector(SelectSelectorConfig(options=hass_apis)),
+        # --- Add selector for CONF_LLM_HASS_API ---
+        vol.Optional(
+            CONF_LLM_HASS_API,
+            description={"suggested_value": options.get(CONF_LLM_HASS_API)},
+            # Default to 'none' if not present, or use the actual default from DEFAULT_OPTIONS
+            default=options.get(CONF_LLM_HASS_API) or "none",
+        ): SelectSelector(SelectSelectorConfig(options=hass_apis)),
+        # --- End add selector ---
         vol.Optional(
             CONF_CHAT_MODEL,
             description={"suggested_value": options.get(CONF_CHAT_MODEL)},
@@ -224,9 +214,6 @@ def deepseek_config_option_schema(
             description={"suggested_value": options.get(CONF_TEMPERATURE)},
             default=RECOMMENDED_TEMPERATURE,
         ): NumberSelector(NumberSelectorConfig(min=0, max=2, step=0.05, mode="slider")),
-        # Removed CONF_RECOMMENDED toggle
-        # Removed CONF_REASONING_EFFORT
-        # Removed CONF_WEB_SEARCH options
     }
     return schema
 
