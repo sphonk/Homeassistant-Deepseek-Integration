@@ -42,7 +42,7 @@ from .const import (
     CONF_TOP_P,
     # Removed CONF_REASONING_EFFORT, CONF_WEB_SEARCH*
     DOMAIN, # Use updated domain
-    LOGGER,
+    LOGGER, # Use the logger from const
     RECOMMENDED_CHAT_MODEL,
     RECOMMENDED_MAX_TOKENS,
     RECOMMENDED_TEMPERATURE,
@@ -163,9 +163,14 @@ async def _transform_stream(
     current_tool_calls: list[dict] = []
     current_tool_call_args_buffer: dict[int, str] = {} # Store partial args per index
     role: Optional[Literal["assistant"]] = None # Made Optional explicit
+    full_response_log = [] # --- DEBUG: Log full stream ---
 
     async for chunk in result:
-        # LOGGER.debug("Received chunk: %s", chunk) # Optional: for debugging stream
+        # --- DEBUG: Log each chunk ---
+        LOGGER.debug("DeepSeek Stream Chunk: %s", chunk.model_dump_json(indent=2))
+        full_response_log.append(chunk.model_dump())
+        # --- END DEBUG ---
+
         delta = chunk.choices[0].delta if chunk.choices else None
         finish_reason = chunk.choices[0].finish_reason if chunk.choices else None
 
@@ -188,6 +193,9 @@ async def _transform_stream(
 
         # Handle tool call deltas (more complex)
         if delta.tool_calls:
+            # --- DEBUG: Log tool call chunk ---
+            LOGGER.debug("Received Tool Call Chunk: %s", delta.tool_calls)
+            # --- END DEBUG ---
             for tool_call_chunk in delta.tool_calls:
                 # Ensure index is not None before proceeding
                 if tool_call_chunk.index is None:
@@ -210,6 +218,9 @@ async def _transform_stream(
                             "function": {"name": function_name, "arguments": ""}
                         }
                         current_tool_call_args_buffer[index] = "" # Initialize buffer for this index
+                        # --- DEBUG: Log new tool call start ---
+                        LOGGER.debug("Tool Call Start Detected: Index=%d, ID=%s, Name=%s", index, tool_call_chunk.id, function_name)
+                        # --- END DEBUG ---
                     else:
                          LOGGER.warning("Incomplete tool call start info in chunk: %s", tool_call_chunk)
 
@@ -218,9 +229,18 @@ async def _transform_stream(
                 # Ensure function and arguments exist before appending
                 if tool_call_chunk.function and tool_call_chunk.function.arguments and index in current_tool_call_args_buffer:
                     current_tool_call_args_buffer[index] += tool_call_chunk.function.arguments
+                    # --- DEBUG: Log argument delta ---
+                    # LOGGER.debug("Tool Call Arg Delta: Index=%d, Args=%s", index, tool_call_chunk.function.arguments) # Can be noisy
+                    # --- END DEBUG ---
+
 
         # Check finish reason
         if finish_reason:
+             # --- DEBUG: Log finish reason and final tool state ---
+            LOGGER.debug("Stream Finish Reason: %s", finish_reason)
+            LOGGER.debug("Final Tool Args Buffer: %s", current_tool_call_args_buffer)
+            LOGGER.debug("Final Current Tool Calls: %s", current_tool_calls)
+            # --- END DEBUG ---
             if finish_reason == "tool_calls":
                 # Process completed tool calls
                 tool_inputs = []
@@ -231,6 +251,9 @@ async def _transform_stream(
                         if "function" in tool_call_info and "name" in tool_call_info["function"]:
                             try:
                                 # Parse arguments once fully received
+                                # --- DEBUG: Log raw args before parsing ---
+                                LOGGER.debug("Attempting to parse args for %s: %s", tool_call_info["function"]["name"], args_str)
+                                # --- END DEBUG ---
                                 tool_args = json.loads(args_str) if args_str else {} # Handle empty args
                                 tool_inputs.append(
                                     llm.ToolInput(
@@ -239,10 +262,13 @@ async def _transform_stream(
                                         tool_args=tool_args,
                                     )
                                 )
-                            except json.JSONDecodeError:
+                                # --- DEBUG: Log successful tool input ---
+                                LOGGER.debug("Successfully parsed tool input: %s", tool_inputs[-1])
+                                # --- END DEBUG ---
+                            except json.JSONDecodeError as e:
                                 LOGGER.error(
-                                    "Failed to decode tool arguments for %s: %s",
-                                    tool_call_info["function"]["name"], args_str
+                                    "Failed to decode tool arguments for %s: %s. Error: %s",
+                                    tool_call_info["function"]["name"], args_str, e
                                 )
                         else:
                              LOGGER.warning("Missing function info for tool call at index %d", index)
@@ -362,6 +388,9 @@ class DeepSeekConversationEntity(
                  # You might want to set tool_choice = "auto" here
                  # if you always want the LLM to decide when to use tools
                  tool_choice = "auto"
+                 # --- DEBUG: Log tools being sent ---
+                 LOGGER.debug("Sending tools to DeepSeek: %s", json.dumps(tools, indent=2))
+                 # --- END DEBUG ---
             else:
                  LOGGER.warning("Selected HASS API '%s' not found.", hass_api_key)
         # --- End HASS API / Tool preparation ---
@@ -371,6 +400,9 @@ class DeepSeekConversationEntity(
 
         # Convert chat history to API format
         messages = _convert_content_to_messages(chat_log.content, system_prompt)
+        # --- DEBUG: Log messages being sent ---
+        LOGGER.debug("Sending messages to DeepSeek: %s", json.dumps(messages, indent=2))
+        # --- END DEBUG ---
 
         # To prevent infinite loops with tools
         for _iteration in range(MAX_TOOL_ITERATIONS):
@@ -389,6 +421,10 @@ class DeepSeekConversationEntity(
                  model_args["tool_choice"] = tool_choice
 
             # Removed OpenAI specific 'reasoning' and 'store' args
+
+            # --- DEBUG: Log model args ---
+            LOGGER.debug("Model arguments for DeepSeek: %s", model_args)
+            # --- END DEBUG ---
 
             try:
                 result = await client.chat.completions.create(**model_args)
@@ -436,7 +472,16 @@ class DeepSeekConversationEntity(
 
             # Break loop if no more tool results need processing
             if not chat_log.unresponded_tool_results:
+                # --- DEBUG: Log successful completion or no tool call needed ---
+                LOGGER.debug("Iteration %d finished. No unresponded tool results.", _iteration + 1)
+                # --- END DEBUG ---
                 break
+            else:
+                 # --- DEBUG: Log tool results received, preparing next iteration ---
+                 LOGGER.debug("Iteration %d finished. Unresponded tool results found, preparing next iteration.", _iteration + 1)
+                 # --- END DEBUG ---
+                 pass # Continue loop
+
         else:
             # Loop finished without break, meaning MAX_TOOL_ITERATIONS reached
             LOGGER.warning("Max tool iterations reached for conversation %s", chat_log.conversation_id)
