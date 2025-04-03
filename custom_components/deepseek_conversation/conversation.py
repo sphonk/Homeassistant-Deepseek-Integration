@@ -2,7 +2,8 @@
 
 from collections.abc import AsyncGenerator, Callable
 import json
-from typing import Any, Literal, cast
+# Removed Literal import as it might not be strictly needed now
+from typing import Any, AsyncGenerator, Callable, Literal, cast, Optional, Union, Dict, List
 
 import openai
 # Import necessary types for chat completions
@@ -10,10 +11,9 @@ from openai import AsyncStream
 from openai.types.chat import ChatCompletionChunk
 from openai.types.chat.chat_completion import ChatCompletionMessage, ChatCompletion
 from openai.types.chat.chat_completion_message_tool_call import ChatCompletionMessageToolCall
-from openai.types.chat.completion_create_params import ToolChoiceParam # For tool choice if needed
-
-# Removed unused OpenAI response types
-# from openai.types.responses import (...)
+# --- Removed problematic import ---
+# from openai.types.chat.completion_create_params import ToolChoiceParam # For tool choice if needed
+# --- End removal ---
 
 # Keep voluptuous_openapi if tool schemas are complex, otherwise remove
 # from voluptuous_openapi import convert
@@ -72,7 +72,7 @@ async def async_setup_entry(
 # --- Tool Formatting (Keep if using tools with DeepSeek) ---
 def _format_tool(
     tool: llm.Tool, custom_serializer: Callable[[Any], Any] | None
-) -> llm.ToolSchema:
+) -> Dict[str, Any]: # Changed return type hint to generic Dict
     """Format tool specification for OpenAI-compatible tool format."""
     # Voluptuous-openapi might be overkill if schemas are simple JSON schemas
     # parameters = convert(tool.parameters, custom_serializer=custom_serializer)
@@ -101,7 +101,7 @@ def _convert_content_to_messages(
         messages.append({"role": "system", "content": system_prompt})
 
     for content in content_list:
-        role: Literal["user", "assistant", "tool"] | None = None
+        role: Optional[Literal["user", "assistant", "tool"]] = None # Made Optional explicit
         message_content: str | list[dict[str, Any]] | None = None
         tool_calls: list[ChatCompletionMessageToolCall] | None = None
         tool_call_id: str | None = None
@@ -115,14 +115,19 @@ def _convert_content_to_messages(
             role = "assistant"
             message_content = content.content
             if content.tool_calls:
-                tool_calls = [
-                    ChatCompletionMessageToolCall(
-                        id=tc.id,
-                        function=dict(name=tc.tool_name, arguments=json.dumps(tc.tool_args)),
-                        type="function"
+                # Ensure tool_calls are correctly formatted if present
+                formatted_tool_calls = []
+                for tc in content.tool_calls:
+                    # Ensure tool_args is a string, as expected by the API usually
+                    arguments_str = json.dumps(tc.tool_args) if not isinstance(tc.tool_args, str) else tc.tool_args
+                    formatted_tool_calls.append(
+                         ChatCompletionMessageToolCall(
+                            id=tc.id,
+                            function=dict(name=tc.tool_name, arguments=arguments_str),
+                            type="function"
+                        )
                     )
-                    for tc in content.tool_calls
-                ]
+                tool_calls = formatted_tool_calls
         elif isinstance(content, conversation.ToolResultContent):
             role = "tool"
             message_content = json.dumps(content.tool_result) # Tool results are content for 'tool' role
@@ -130,14 +135,15 @@ def _convert_content_to_messages(
 
         # Construct the message dictionary
         if role:
-            msg = {"role": role}
+            msg: Dict[str, Any] = {"role": role} # Use Dict for type hint
             if message_content:
                 msg["content"] = message_content
             if tool_calls:
                  # Ensure content is None or empty string if tool_calls are present for assistant
                 if role == "assistant":
-                    msg["content"] = msg.get("content") or "" # Or None, check API spec
-                msg["tool_calls"] = [tc.model_dump(exclude_unset=True) for tc in tool_calls]
+                    msg["content"] = msg.get("content") # None if no text content
+                # Use model_dump for pydantic models if needed, or direct dict if already formatted
+                msg["tool_calls"] = [tc.model_dump(exclude_unset=True) if hasattr(tc, 'model_dump') else tc for tc in tool_calls]
             if tool_call_id:
                 msg["tool_call_id"] = tool_call_id
 
@@ -151,11 +157,11 @@ def _convert_content_to_messages(
 async def _transform_stream(
     chat_log: conversation.ChatLog,
     result: AsyncStream[ChatCompletionChunk],
-) -> AsyncGenerator[conversation.AssistantContentDeltaDict]:
+) -> AsyncGenerator[conversation.AssistantContentDeltaDict, None]: # Added None to AsyncGenerator
     """Transform a DeepSeek delta stream (ChatCompletionChunk) into HA format."""
     current_tool_calls: list[dict] = []
     current_tool_call_args_buffer: dict[int, str] = {} # Store partial args per index
-    role: Literal["assistant"] | None = None
+    role: Optional[Literal["assistant"]] = None # Made Optional explicit
 
     async for chunk in result:
         # LOGGER.debug("Received chunk: %s", chunk) # Optional: for debugging stream
@@ -167,8 +173,13 @@ async def _transform_stream(
 
         # Role appears only in the first chunk
         if delta.role:
-            role = delta.role
-            yield {"role": role} # Should always be 'assistant'
+            # Ensure role is 'assistant' as expected
+            if delta.role == "assistant":
+                role = delta.role
+                yield {"role": role}
+            else:
+                LOGGER.warning("Unexpected role in stream delta: %s", delta.role)
+
 
         # Handle content delta
         if delta.content:
@@ -177,6 +188,11 @@ async def _transform_stream(
         # Handle tool call deltas (more complex)
         if delta.tool_calls:
             for tool_call_chunk in delta.tool_calls:
+                # Ensure index is not None before proceeding
+                if tool_call_chunk.index is None:
+                    LOGGER.warning("Tool call chunk missing index: %s", tool_call_chunk)
+                    continue
+
                 index = tool_call_chunk.index
 
                 # New tool call started
@@ -184,15 +200,22 @@ async def _transform_stream(
                     # Ensure list is long enough
                     current_tool_calls.extend([{}] * (index - len(current_tool_calls) + 1))
                     # Store initial tool call info (id, type, function name)
-                    current_tool_calls[index] = {
-                        "id": tool_call_chunk.id,
-                        "type": tool_call_chunk.type,
-                        "function": {"name": tool_call_chunk.function.name, "arguments": ""}
-                    }
-                    current_tool_call_args_buffer[index] = "" # Initialize buffer for this index
+                    # Check if function exists and has name before accessing
+                    function_name = tool_call_chunk.function.name if tool_call_chunk.function else None
+                    if tool_call_chunk.id and tool_call_chunk.type and function_name:
+                        current_tool_calls[index] = {
+                            "id": tool_call_chunk.id,
+                            "type": tool_call_chunk.type,
+                            "function": {"name": function_name, "arguments": ""}
+                        }
+                        current_tool_call_args_buffer[index] = "" # Initialize buffer for this index
+                    else:
+                         LOGGER.warning("Incomplete tool call start info in chunk: %s", tool_call_chunk)
+
 
                 # Append argument delta to the buffer
-                if tool_call_chunk.function and tool_call_chunk.function.arguments:
+                # Ensure function and arguments exist before appending
+                if tool_call_chunk.function and tool_call_chunk.function.arguments and index in current_tool_call_args_buffer:
                     current_tool_call_args_buffer[index] += tool_call_chunk.function.arguments
 
         # Check finish reason
@@ -201,23 +224,27 @@ async def _transform_stream(
                 # Process completed tool calls
                 tool_inputs = []
                 for index, args_str in current_tool_call_args_buffer.items():
-                    if index < len(current_tool_calls):
+                    if index < len(current_tool_calls) and current_tool_calls[index]: # Check if entry exists
                         tool_call_info = current_tool_calls[index]
-                        try:
-                            # Parse arguments once fully received
-                            tool_args = json.loads(args_str)
-                            tool_inputs.append(
-                                llm.ToolInput(
-                                    id=tool_call_info["id"],
-                                    tool_name=tool_call_info["function"]["name"],
-                                    tool_args=tool_args,
+                        # Ensure function info exists
+                        if "function" in tool_call_info and "name" in tool_call_info["function"]:
+                            try:
+                                # Parse arguments once fully received
+                                tool_args = json.loads(args_str) if args_str else {} # Handle empty args
+                                tool_inputs.append(
+                                    llm.ToolInput(
+                                        id=tool_call_info["id"],
+                                        tool_name=tool_call_info["function"]["name"],
+                                        tool_args=tool_args,
+                                    )
                                 )
-                            )
-                        except json.JSONDecodeError:
-                            LOGGER.error(
-                                "Failed to decode tool arguments for %s: %s",
-                                tool_call_info["function"]["name"], args_str
-                            )
+                            except json.JSONDecodeError:
+                                LOGGER.error(
+                                    "Failed to decode tool arguments for %s: %s",
+                                    tool_call_info["function"]["name"], args_str
+                                )
+                        else:
+                             LOGGER.warning("Missing function info for tool call at index %d", index)
                 if tool_inputs:
                     yield {"tool_calls": tool_inputs}
                 # Clear buffers for next iteration if any
@@ -299,6 +326,13 @@ class DeepSeekConversationEntity(
     ) -> conversation.ConversationResult:
         """Handle a message using DeepSeek."""
         options = self.entry.options
+        # Ensure runtime_data exists before accessing client
+        if not hasattr(self.entry, 'runtime_data') or not isinstance(self.entry.runtime_data, openai.AsyncClient):
+             LOGGER.error("DeepSeek client not available in runtime_data.")
+             return conversation.ConversationResult(
+                 response=conversation.ConversationErrorResponse("client_error", DOMAIN),
+                 conversation_id=chat_log.conversation_id
+             )
         client: openai.AsyncClient = self.entry.runtime_data
         model = options.get(CONF_CHAT_MODEL, RECOMMENDED_CHAT_MODEL)
 
@@ -306,8 +340,10 @@ class DeepSeekConversationEntity(
         system_prompt = options.get(CONF_PROMPT)
 
         # --- Prepare tools if HASS API is used ---
-        tools: list[llm.ToolSchema] | None = None
-        tool_choice: ToolChoiceParam | None = None # Optional: control tool usage
+        tools: list[Dict[str, Any]] | None = None # Use generic Dict hint
+        # --- Simplified tool_choice type hint ---
+        tool_choice: Optional[Union[str, Dict[str, Any]]] = None # Use generic Dict/str hint
+        # --- End type hint change ---
         if chat_log.llm_api:
             tools = [
                 _format_tool(tool, chat_log.llm_api.custom_serializer)
@@ -323,7 +359,7 @@ class DeepSeekConversationEntity(
 
         # To prevent infinite loops with tools
         for _iteration in range(MAX_TOOL_ITERATIONS):
-            model_args = {
+            model_args: Dict[str, Any] = { # Use Dict for type hint
                 "model": model,
                 "messages": messages,
                 "max_tokens": options.get(CONF_MAX_TOKENS, RECOMMENDED_MAX_TOKENS),
@@ -348,6 +384,12 @@ class DeepSeekConversationEntity(
                      response=conversation.ConversationErrorResponse("rate_limit", DOMAIN),
                      conversation_id=chat_log.conversation_id
                 )
+            except openai.APIConnectionError as err:
+                 LOGGER.error("Connection error talking to DeepSeek: %s", err)
+                 return conversation.ConversationResult(
+                     response=conversation.ConversationErrorResponse("connection_error", DOMAIN), # Use a specific key if available
+                     conversation_id=chat_log.conversation_id
+                 )
             except openai.OpenAIError as err:
                 LOGGER.error("Error talking to DeepSeek: %s", err)
                  # Return generic error
@@ -357,13 +399,22 @@ class DeepSeekConversationEntity(
                 )
 
             # Process the stream and update chat log
-            async for content_delta in chat_log.async_add_delta_content_stream(
-                user_input.agent_id, _transform_stream(chat_log, result)
-            ):
-                # Update message history for potential next iteration (tool use)
-                # This part requires careful handling based on how chat_log structures deltas
-                # For simplicity, we rebuild messages from the updated chat_log before the next loop
-                pass # Message history will be rebuilt from chat_log below
+            try:
+                async for content_delta in chat_log.async_add_delta_content_stream(
+                    user_input.agent_id, _transform_stream(chat_log, result)
+                ):
+                    # Update message history for potential next iteration (tool use)
+                    # This part requires careful handling based on how chat_log structures deltas
+                    # For simplicity, we rebuild messages from the updated chat_log before the next loop
+                    pass # Message history will be rebuilt from chat_log below
+            except HomeAssistantError as e:
+                 # Catch errors raised by _transform_stream (e.g., finish reasons)
+                 LOGGER.error("Error processing DeepSeek stream: %s", e)
+                 return conversation.ConversationResult(
+                     response=conversation.ConversationErrorResponse(str(e), DOMAIN), # Use error message as key or map specific errors
+                     conversation_id=chat_log.conversation_id
+                 )
+
 
             # Rebuild messages from the potentially updated chat log for the next iteration
             messages = _convert_content_to_messages(chat_log.content, system_prompt)
