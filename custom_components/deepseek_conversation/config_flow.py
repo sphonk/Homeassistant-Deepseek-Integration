@@ -129,11 +129,11 @@ class DeepSeekConfigFlow(ConfigFlow, domain=DOMAIN):
 class DeepSeekOptionsFlow(OptionsFlow):
     """DeepSeek config flow options handler."""
 
-    # --- Removed __init__ method ---
-    # def __init__(self, config_entry: ConfigEntry) -> None:
-    #     """Initialize options flow."""
-    #     self.config_entry = config_entry
-    # --- End removal ---
+    # --- Reinstated __init__ method ---
+    def __init__(self, config_entry: ConfigEntry) -> None:
+        """Initialize options flow."""
+        self.config_entry = config_entry
+    # --- End reinstatement ---
 
     async def async_step_init(
         self, user_input: dict[str, Any] | None = None
