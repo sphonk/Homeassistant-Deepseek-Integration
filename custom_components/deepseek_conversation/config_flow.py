@@ -59,7 +59,7 @@ DEFAULT_OPTIONS = {
     CONF_LLM_HASS_API: llm.LLM_API_ASSIST, # Default to Assist API
     CONF_PROMPT: llm.DEFAULT_INSTRUCTIONS_PROMPT,
     CONF_CHAT_MODEL: RECOMMENDED_CHAT_MODEL,
-    CONF_MAX_TOKENS: RECOMMENDED_MAX_TOKENS,
+    CONF_MAX_TOKENS: RECOMMENDED_MAX_TOKENS, # Remember to increase this in UI!
     CONF_TEMPERATURE: RECOMMENDED_TEMPERATURE,
     CONF_TOP_P: RECOMMENDED_TOP_P,
 }
@@ -129,30 +129,30 @@ class DeepSeekConfigFlow(ConfigFlow, domain=DOMAIN):
 class DeepSeekOptionsFlow(OptionsFlow):
     """DeepSeek config flow options handler."""
 
-    def __init__(self, config_entry: ConfigEntry) -> None:
-        """Initialize options flow."""
-        self.config_entry = config_entry
+    # --- Removed __init__ method ---
+    # def __init__(self, config_entry: ConfigEntry) -> None:
+    #     """Initialize options flow."""
+    #     self.config_entry = config_entry
+    # --- End removal ---
 
     async def async_step_init(
         self, user_input: dict[str, Any] | None = None
     ) -> ConfigFlowResult:
         """Manage the options."""
+        # self.config_entry should be automatically available here
         errors: dict[str, str] = {}
 
         if user_input is not None:
-            # --- Handle CONF_LLM_HASS_API selection ---
-            # If user selects "none", store it as None or remove the key
+            # Handle CONF_LLM_HASS_API selection
             if user_input.get(CONF_LLM_HASS_API) == "none":
-                 # Decide how to store "none": either remove key or store None
-                 # Let's remove the key for simplicity, assuming None means no API
                  user_input.pop(CONF_LLM_HASS_API, None)
-            # --- End handling ---
 
             if not errors:
                 # Merge new user input with existing options before creating entry
                 updated_options = {**self.config_entry.options, **user_input}
                 return self.async_create_entry(title="", data=updated_options)
 
+        # Pass options from self.config_entry to the schema function
         schema = deepseek_config_option_schema(self.hass, self.config_entry.options)
         return self.async_show_form(
             step_id="init",
@@ -166,7 +166,7 @@ def deepseek_config_option_schema(
     options: dict[str, Any] | MappingProxyType[str, Any],
 ) -> VolDictType:
     """Return a schema for DeepSeek completion options."""
-    # --- Re-add HASS API selection ---
+    # Re-add HASS API selection
     hass_apis: list[SelectOptionDict] = [
         SelectOptionDict(label="No control", value="none")
     ]
@@ -174,7 +174,6 @@ def deepseek_config_option_schema(
         SelectOptionDict(label=api.name, value=api.id)
         for api in llm.async_get_apis(hass)
     )
-    # --- End re-add ---
 
     schema: VolDictType = {
         vol.Optional(
@@ -186,14 +185,12 @@ def deepseek_config_option_schema(
             },
             default=llm.DEFAULT_INSTRUCTIONS_PROMPT,
         ): TemplateSelector(),
-        # --- Add selector for CONF_LLM_HASS_API ---
+        # Add selector for CONF_LLM_HASS_API
         vol.Optional(
             CONF_LLM_HASS_API,
             description={"suggested_value": options.get(CONF_LLM_HASS_API)},
-            # Default to 'none' if not present, or use the actual default from DEFAULT_OPTIONS
             default=options.get(CONF_LLM_HASS_API) or "none",
         ): SelectSelector(SelectSelectorConfig(options=hass_apis)),
-        # --- End add selector ---
         vol.Optional(
             CONF_CHAT_MODEL,
             description={"suggested_value": options.get(CONF_CHAT_MODEL)},
@@ -216,4 +213,3 @@ def deepseek_config_option_schema(
         ): NumberSelector(NumberSelectorConfig(min=0, max=2, step=0.05, mode="slider")),
     }
     return schema
-
