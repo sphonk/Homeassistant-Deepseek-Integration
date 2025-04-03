@@ -1,6 +1,6 @@
 {
   "domain": "deepseek_conversation",
-  "name": "OpenAI Conversation",
+  "name": "DeepSeek Conversation",
   "after_dependencies": ["assist_pipeline", "intent"],
   "codeowners": ["@leofleischmann"],
   "config_flow": true,
