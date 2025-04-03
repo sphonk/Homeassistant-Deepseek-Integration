@@ -21,8 +21,9 @@ import voluptuous as vol # Keep for basic schema validation if needed
 
 from homeassistant.components import assist_pipeline, conversation
 from homeassistant.config_entries import ConfigEntry
-# Removed CONF_LLM_HASS_API, MATCH_ALL (can be added back if needed)
-from homeassistant.const import MATCH_ALL
+# --- Import CONF_LLM_HASS_API ---
+from homeassistant.const import MATCH_ALL, CONF_LLM_HASS_API
+# --- End Import ---
 from homeassistant.core import HomeAssistant
 from homeassistant.exceptions import HomeAssistantError
 from homeassistant.helpers import device_registry as dr, intent, llm
@@ -291,11 +292,13 @@ class DeepSeekConversationEntity(
             model="DeepSeek API",    # Changed model
             entry_type=dr.DeviceEntryType.SERVICE,
         )
-        # Re-enable if HASS API control is kept
-        # if self.entry.options.get(CONF_LLM_HASS_API):
-        #     self._attr_supported_features = (
-        #         conversation.ConversationEntityFeature.CONTROL
-        #     )
+        # --- Re-enable supported_features based on options ---
+        # Check if CONF_LLM_HASS_API exists and is not 'none' or None
+        if self.entry.options.get(CONF_LLM_HASS_API):
+            self._attr_supported_features = (
+                conversation.ConversationEntityFeature.CONTROL
+            )
+        # --- End re-enable ---
 
     @property
     def supported_languages(self) -> list[str] | Literal["*"]:
@@ -341,16 +344,28 @@ class DeepSeekConversationEntity(
 
         # --- Prepare tools if HASS API is used ---
         tools: list[Dict[str, Any]] | None = None # Use generic Dict hint
-        # --- Simplified tool_choice type hint ---
         tool_choice: Optional[Union[str, Dict[str, Any]]] = None # Use generic Dict/str hint
-        # --- End type hint change ---
-        if chat_log.llm_api:
-            tools = [
-                _format_tool(tool, chat_log.llm_api.custom_serializer)
-                for tool in chat_log.llm_api.tools
-            ]
-            # Example: Force tool usage if available
-            # tool_choice = "auto" # or {"type": "function", "function": {"name": "specific_tool"}}
+
+        # --- Get selected HASS API from options ---
+        hass_api_key = options.get(CONF_LLM_HASS_API)
+        if hass_api_key:
+            # Get the actual llm.API object
+            llm_api = llm.async_get_api(self.hass, hass_api_key)
+            if llm_api:
+                 # Use the llm_api object from chat_log if available (preferred)
+                 # Otherwise, use the one we just fetched (fallback)
+                 active_llm_api = chat_log.llm_api or llm_api
+                 tools = [
+                     _format_tool(tool, active_llm_api.custom_serializer)
+                     for tool in active_llm_api.tools
+                 ]
+                 # You might want to set tool_choice = "auto" here
+                 # if you always want the LLM to decide when to use tools
+                 tool_choice = "auto"
+            else:
+                 LOGGER.warning("Selected HASS API '%s' not found.", hass_api_key)
+        # --- End HASS API / Tool preparation ---
+
 
         # Removed web search tool logic
 
@@ -461,3 +476,4 @@ class DeepSeekConversationEntity(
         """Handle options update."""
         # Reload the entry to apply changes
         await hass.config_entries.async_reload(entry.entry_id)
+
