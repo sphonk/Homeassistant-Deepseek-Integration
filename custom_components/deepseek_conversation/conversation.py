@@ -373,27 +373,19 @@ class DeepSeekConversationEntity(
         tool_choice: Optional[Union[str, Dict[str, Any]]] = None # Use generic Dict/str hint
 
         # --- Get selected HASS API from options ---
-        hass_api_key = options.get(CONF_LLM_HASS_API)
-        if hass_api_key:
-            # Get the actual llm.API object
-            llm_api = llm.async_get_api(self.hass, hass_api_key)
-            if llm_api:
-                 # Use the llm_api object from chat_log if available (preferred)
-                 # Otherwise, use the one we just fetched (fallback)
-                 active_llm_api = chat_log.llm_api or llm_api
-                 tools = [
-                     _format_tool(tool, active_llm_api.custom_serializer)
-                     for tool in active_llm_api.tools
-                 ]
-                 # You might want to set tool_choice = "auto" here
-                 # if you always want the LLM to decide when to use tools
-                 tool_choice = "auto"
-                 # --- DEBUG: Log tools being sent ---
-                 LOGGER.debug("Sending tools to DeepSeek: %s", json.dumps(tools, indent=2))
-                 # --- END DEBUG ---
-            else:
-                 LOGGER.warning("Selected HASS API '%s' not found.", hass_api_key)
-        # --- End HASS API / Tool preparation ---
+        # --- MODIFIED LOGIC: Use chat_log.llm_api directly ---
+        if chat_log.llm_api:
+            # The llm_api object provided in chat_log already has the correct context
+            active_llm_api = chat_log.llm_api
+            tools = [
+                _format_tool(tool, active_llm_api.custom_serializer)
+                for tool in active_llm_api.tools
+            ]
+            tool_choice = "auto" # Let the LLM decide when to use tools
+            # --- DEBUG: Log tools being sent ---
+            LOGGER.debug("Sending tools to DeepSeek: %s", json.dumps(tools, indent=2))
+            # --- END DEBUG ---
+        # --- End MODIFIED LOGIC ---
 
 
         # Removed web search tool logic
