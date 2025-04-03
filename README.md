@@ -13,8 +13,7 @@ This custom integration for Home Assistant enables the use of the [DeepSeek API]
 * **Conversation Agent:** Allows using DeepSeek for text-based conversations via the Assist interface.
 * **UI Configuration:** API key and basic model parameters (model name, max tokens, temperature, top P, system prompt, HASS API for control) can be configured through the Home Assistant user interface.
 * **Streaming:** Responses are streamed.
-* **Device Control (Experimental):** The integration attempts to pass the standard Home Assistant tools (Tools/Functions) to DeepSeek if a HASS API is selected in the options. The ability to actually control devices **strongly depends on how well the used DeepSeek model understands and supports the OpenAI-compatible tool-calling mechanism.** This may be unreliable.
-* **Removed Features:** The original DALL-E image generation function has been removed.
+* **Device Control:** The integration attempts to pass the standard Home Assistant tools (Tools/Functions) to DeepSeek if a HASS API is selected in the options. This may be unreliable but it works.
 
 ## Installation (via HACS)
 
