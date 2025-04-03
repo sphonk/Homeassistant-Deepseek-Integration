@@ -1,78 +1,19 @@
 {
-  "config": {
-    "step": {
-      "user": {
-        "title": "DeepSeek API Key",
-        "data": {
-          "api_key": "[%key:common::config_flow::data::api_key%]"
-        }
-      }
-    },
-    "error": {
-      "cannot_connect": "[%key:common::config_flow::error::cannot_connect%]",
-      "invalid_auth": "[%key:common::config_flow::error::invalid_auth%]",
-      "api_error": "Failed to connect or communicate with the DeepSeek API. Please check logs.",
-      "unknown": "[%key:common::config_flow::error::unknown%]"
-    },
-    "abort": {
-      "already_configured": "[%key:common::config_flow::abort::already_configured_service%]"
-    }
-  },
-  "options": {
-    "step": {
-      "init": {
-        "title": "DeepSeek Conversation Options",
-        "data": {
-          "prompt": "Instructions",
-          "chat_model": "[%key:common::generic::model%]",
-          "max_tokens": "Maximum tokens to return in response",
-          "temperature": "Temperature",
-          "top_p": "Top P"
+    "config": {
+        "step": {
+            "user": {
+                "title": "DeepSeek API Key (Test)",
+                "data": {
+                    "api_key": "API Key"
+                }
+            }
         },
-        "data_description": {
-          "prompt": "System prompt: Instruct how the DeepSeek model should behave.",
-          "chat_model": "Specify the DeepSeek model to use (e.g., deepseek-chat, deepseek-coder).",
-          "max_tokens": "Controls the maximum number of tokens the model will generate in the response.",
-          "temperature": "Controls randomness. Lower values make the response more deterministic.",
-          "top_p": "Controls diversity via nucleus sampling. Lower values limit the token selection pool."
-        }
-      }
-    },
-    "error": {}
-  },
-  "selector": {},
-  "services": {
-    "generate_content": {
-      "name": "Generate content",
-      "description": "Sends a conversational query to DeepSeek.",
-      "fields": {
-        "config_entry": {
-          "name": "Config entry",
-          "description": "The DeepSeek config entry to use for this action."
+        "error": {
+            "cannot_connect": "Cannot connect (Test)",
+            "invalid_auth": "Invalid auth (Test)"
         },
-        "prompt": {
-          "name": "Prompt",
-          "description": "The prompt to send to DeepSeek."
-        },
-        "filenames": {
-          "name": "Files",
-          "description": "List of local file paths (images supported by some models). Functionality depends on DeepSeek model capabilities."
+        "abort": {
+            "already_configured": "Already configured (Test)"
         }
-      }
     }
-  },
-  "exceptions": {
-    "invalid_config_entry": {
-      "message": "Invalid config entry provided. Got {config_entry}"
-    },
-    "rate_limit": {
-       "message": "Rate limited by DeepSeek API or insufficient funds."
-    },
-    "api_error": {
-       "message": "An error occurred while communicating with the DeepSeek API."
-    },
-     "max_tool_iterations": {
-       "message": "Maximum tool call iterations reached."
-    }
-  }
 }
