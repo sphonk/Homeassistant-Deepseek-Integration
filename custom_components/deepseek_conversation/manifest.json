@@ -1,11 +1,12 @@
 {
   "domain": "deepseek_conversation",
   "name": "DeepSeek Conversation",
+  "version": "1.0.0", // <-- HIER DIE VERSION HINZUGEFÜGT
   "after_dependencies": ["assist_pipeline", "intent"],
-  "codeowners": ["@leofle"],
+  "codeowners": ["@leofleischmann"],
   "config_flow": true,
   "dependencies": ["conversation"],
-  "documentation": "https://www.home-assistant.io/integrations/conversation/",
+  "documentation": "https://www.home-assistant.io/integrations/conversation/", // Optional: Ändere dies ggf. auf dein Repo
   "integration_type": "service",
   "iot_class": "cloud_polling",
   "requirements": ["openai==1.68.2"]
