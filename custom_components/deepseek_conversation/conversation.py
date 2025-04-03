@@ -329,10 +329,6 @@ class DeepSeekConversationEntity(
              )
         # --- End reinstate ---
 
-        # --- REMOVED: Explicit system_prompt fetching ---
-        # system_prompt = chat_log.llm_prompt # Incorrect attribute
-        # --- End REMOVED ---
-
         # --- Prepare tools if HASS API is available in chat_log ---
         tools: list[Dict[str, Any]] | None = None
         tool_choice: Optional[Union[str, Dict[str, Any]]] = None
@@ -345,15 +341,17 @@ class DeepSeekConversationEntity(
                 for tool in active_llm_api.tools
             ]
             tool_choice = "auto"
-            LOGGER.debug("Sending tools to DeepSeek (from chat_log.llm_api): %s", json.dumps(tools, indent=2))
+            # --- MODIFIED DEBUG LOGGING ---
+            # Log only tool names to avoid serialization errors
+            tool_names = [t.get("function", {}).get("name", "unknown") for t in tools]
+            LOGGER.debug("Sending tools to DeepSeek (from chat_log.llm_api): %s", tool_names)
+            # --- END MODIFIED DEBUG LOGGING ---
         elif hass_api_key:
              LOGGER.warning("HASS API '%s' selected in options, but chat_log.llm_api is None after async_update_llm_data. Tools cannot be sent.", hass_api_key)
         # --- End Tool Prep ---
 
 
         # --- Convert chat history (NOW EXCLUDES system prompt) ---
-        # async_update_llm_data might add system prompt to chat_log.content,
-        # or the framework handles it. _convert_content_to_messages now skips system roles.
         messages = _convert_content_to_messages(chat_log.content)
         LOGGER.debug("Sending messages to DeepSeek (excluding system): %s", json.dumps(messages, indent=2))
         # --- End Convert ---
@@ -410,9 +408,6 @@ class DeepSeekConversationEntity(
                  return conversation.ConversationResult(response=intent_response, conversation_id=chat_log.conversation_id)
 
             # --- Rebuild messages for next iteration (using updated chat_log.content) ---
-            # Pass the RENDERED system prompt again in case it's needed for context in multi-turn tool use?
-            # No, the API expects only user/assistant/tool messages after the first system message.
-            # So, just convert the updated content.
             messages = _convert_content_to_messages(chat_log.content)
             # --- End Rebuild ---
 
@@ -421,8 +416,6 @@ class DeepSeekConversationEntity(
                 break
             else:
                  LOGGER.debug("Iteration %d finished. Unresponded tool results found, preparing next iteration.", _iteration + 1)
-                 # Add tool results to messages for the next API call
-                 # This should be handled by _convert_content_to_messages now
 
         else: # Max iterations reached
             LOGGER.warning("Max tool iterations reached for conversation %s", chat_log.conversation_id)
