@@ -42,7 +42,6 @@ This custom integration for Home Assistant enables the use of the [DeepSeek API]
 ## Requirements
 
 * A valid API key from [DeepSeek](https://platform.deepseek.com/).
-* Home Assistant Core.
 * HACS (for easy installation).
 
 ## Disclaimer
