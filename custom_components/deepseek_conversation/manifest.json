@@ -11,6 +11,6 @@
   "iot_class": "cloud_polling",
   "requirements": [
     "openai==1.68.2",
-    "voluptuous-openapi==0.0.6"
+    "voluptuous-openapi==0.0.7"
   ]
 }
