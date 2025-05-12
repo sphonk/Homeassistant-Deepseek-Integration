@@ -1,3 +1,7 @@
+![Plattform](https://img.shields.io/badge/Plattform-Windows-blue.svg)
+![Release](https://img.shields.io/github/v/release/leofleischmann/Windows-Speed-Reader-RSVP?label=Version)
+![Downloads](https://img.shields.io/github/downloads/leofleischmann/Windows-Speed-Reader-RSVP/total?label=Downloads)
+
 # Home Assistant DeepSeek Conversation Integration (Prototype)
 
 > **Important Note:** This is an **experimental prototype integration**! It has been adapted to use the DeepSeek API instead of the OpenAI API. It may be unstable, contain bugs, and might not be suitable for production use. It serves as a foundation and demonstration for the potential integration of DeepSeek into Home Assistant.
