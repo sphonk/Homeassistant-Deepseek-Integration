@@ -1,4 +1,3 @@
-![Plattform](https://img.shields.io/badge/Plattform-Windows-blue.svg)
 ![Release](https://img.shields.io/github/v/release/leofleischmann/Windows-Speed-Reader-RSVP?label=Version)
 ![Downloads](https://img.shields.io/github/downloads/leofleischmann/Windows-Speed-Reader-RSVP/total?label=Downloads)
 
